@@ -1,21 +1,12 @@
-# UlfnetRef
+# Ulfnet.Ref
 
-**TODO: Add description**
+This is a library for dealing with mutable and cross-referencing data
+structures in Elixir.
 
-## Installation
+It is an internal dependency of [wongi-engine-elixir]
+(https://github.com/ulfurinn/wongi-engine-elixir) and is not made for public
+consumption.
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `ulfnet_ref` to your list of dependencies in `mix.exs`:
+Interfaces may change without notice. No support will be provided.
 
-```elixir
-def deps do
-  [
-    {:ulfnet_ref, "~> 0.1.0"}
-  ]
-end
-```
-
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at <https://hexdocs.pm/ulfnet_ref>.
-
+Use at your own risk.
