@@ -179,11 +179,6 @@ defmodule Ulfnet.Ref.Table do
     :ets.member(table, key)
   end
 
-  defp ets_update(table, key, fun) do
-    :ets.insert(table, {key, fun.(ets_fetch(table, key))})
-    table
-  end
-
   defp ets_update(table, key, default, fun) do
     case :ets.lookup(table, key) do
       [{^key, value}] ->
