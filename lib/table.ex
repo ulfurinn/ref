@@ -10,6 +10,11 @@ defmodule Ulfnet.Ref.Table do
 
   @tag Ulfnet.Ref
 
+  @type ref() :: {Ulfnet.Ref, reference()}
+
+  defguard is_cell_ref(ref) when is_tuple(ref) and tuple_size(ref) == 2 and elem(ref, 0) == @tag and is_reference(elem(ref, 1))
+  defguard is_cell(item) when is_map(item) and is_cell_ref(:erlang.map_get(Ulfnet.Ref, item))
+
   def new() do
     %__MODULE__{}
   end

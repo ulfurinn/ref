@@ -173,4 +173,12 @@ defmodule UlfnetRefTest do
       RefTable.put(table, item2)
     end
   end
+
+  test "guard" do
+    ref = RefTable.make_ref()
+    assert RefTable.is_cell_ref(ref)
+
+    item = %Data{} |> RefTable.make_ref()
+    assert RefTable.is_cell(item)
+  end
 end
