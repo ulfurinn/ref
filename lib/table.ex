@@ -62,7 +62,7 @@ defmodule Ulfnet.Ref.Table do
 
     outlinks = Map.get(table.outlinks, ref, [])
 
-    %__MODULE__{table | refs: Map.delete(refs, ref), inlinks: Map.delete(inlinks, ref)}
+    %__MODULE__{table | refs: Map.delete(refs, ref)}
     |> process_outlinks(ref, outlinks, [])
   end
 
@@ -78,30 +78,24 @@ defmodule Ulfnet.Ref.Table do
   end
 
   defp process_outlinks(table, ref, old_outlinks, new_outlinks) do
-    added_links = new_outlinks -- old_outlinks
-    table = added_links |> Enum.reduce(table, fn linked_ref, table ->
+    table
+    |> process_added_outlinks(ref, new_outlinks -- old_outlinks)
+    |> process_removed_outlinks(ref, old_outlinks -- new_outlinks)
+    |> set_outlink_element(ref, new_outlinks)
+  end
+
+  defp process_added_outlinks(table, ref, outlinks) do
+    outlinks |> Enum.reduce(table, fn linked_ref, table ->
       inlinks = Map.update(table.inlinks, linked_ref, [ref], &[ref | &1])
       %__MODULE__{table | inlinks: inlinks}
     end)
+  end
 
-    removed_links = old_outlinks -- new_outlinks
-    table = removed_links |> Enum.reduce(table, fn linked_ref, table ->
+  defp process_removed_outlinks(table, ref, outlinks) do
+    outlinks |> Enum.reduce(table, fn linked_ref, table ->
       item_inlinks = Map.get(table.inlinks, linked_ref, []) -- [ref]
-      if item_inlinks == [] do
-        table
-        |> set_inlink_element(linked_ref, [])
-        |> delete(linked_ref)
-      else
-        set_inlink_element(table, linked_ref, item_inlinks)
-      end
+      set_inlink_element_with_gc(table, linked_ref, item_inlinks)
     end)
-
-    outlinks = if new_outlinks == [] do
-      Map.delete(table.outlinks, ref)
-    else
-      Map.put(table.outlinks, ref, new_outlinks)
-    end
-    %__MODULE__{table | outlinks: outlinks}
   end
 
   defp scan_outlinks(item = %{@tag => {@tag, ref}}), do: scan_outlinks(Map.delete(item, @tag), ref, %{}) |> Map.keys()
@@ -137,6 +131,25 @@ defmodule Ulfnet.Ref.Table do
   # anything else
   defp scan_outlinks(_, _, acc), do: acc
 
-  defp set_inlink_element(table = %__MODULE__{inlinks: inlinks}, ref, list), do: %__MODULE__{table | inlinks: Map.put(inlinks, ref, list)}
+  defp set_inlink_element_with_gc(table , ref, []) do
+    table |> set_inlink_element(ref, []) |> delete(ref)
+  end
+  defp set_inlink_element_with_gc(table , ref, list) do
+    table |> set_inlink_element(ref, list)
+  end
+
+  defp set_inlink_element(table = %__MODULE__{inlinks: inlinks}, ref, []) do
+    %__MODULE__{table | inlinks: Map.delete(inlinks, ref)}
+  end
+  defp set_inlink_element(table = %__MODULE__{inlinks: inlinks}, ref, list) do
+    %__MODULE__{table | inlinks: Map.put(inlinks, ref, list)}
+  end
+
+  defp set_outlink_element(table = %__MODULE__{outlinks: outlinks}, ref, []) do
+    %__MODULE__{table | outlinks: Map.delete(outlinks, ref)}
+  end
+  defp set_outlink_element(table = %__MODULE__{outlinks: outlinks}, ref, list) do
+    %__MODULE__{table | outlinks: Map.put(outlinks, ref, list)}
+  end
 end
 
