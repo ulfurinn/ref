@@ -75,9 +75,16 @@ defmodule Ulfnet.Ref.Table do
 
   defp process_outlinks(table, ref, old_outlinks, new_outlinks) do
     table
+    |> ensure_refs_in_table(new_outlinks)
     |> process_added_outlinks(ref, new_outlinks -- old_outlinks)
     |> process_removed_outlinks(ref, old_outlinks -- new_outlinks)
     |> set_outlink_element(ref, new_outlinks)
+  end
+
+  defp ensure_refs_in_table(table = %__MODULE__{refs: refs}, links) do
+    missing_refs = Enum.reject(links, &Map.has_key?(refs, &1))
+    if missing_refs != [], do: raise "referenced cell not in table"
+    table
   end
 
   defp process_added_outlinks(table, ref, outlinks) do

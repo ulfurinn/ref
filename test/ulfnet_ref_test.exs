@@ -62,4 +62,15 @@ defmodule UlfnetRefTest do
     assert %{} == table.outlinks
     assert %{} == table.inlinks
   end
+
+  test "enforce checked in references" do
+    item1 = RefTable.make_ref(%Data{})
+    item2 = RefTable.make_ref(%Data{data: RefTable.ref(item1)})
+
+    table = RefTable.new()
+
+    assert_raise RuntimeError, fn ->
+      RefTable.put(table, item2)
+    end
+  end
 end
