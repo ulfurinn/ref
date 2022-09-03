@@ -17,14 +17,14 @@ defmodule UlfnetRefTest do
 
   test "put external" do
     ref = RefTable.make_ref()
-    {table, _} = RefTable.new() |> RefTable.put(ref, %Data{data: 1})
+    {table, _} = RefTable.new() |> RefTable.check_in(ref, %Data{data: 1})
 
     assert 1 == RefTable.get(table, ref).data
   end
 
   test "update" do
     ref = RefTable.make_ref()
-    {table, _} = RefTable.new() |> RefTable.put(ref, %Data{data: 1})
+    {table, _} = RefTable.new() |> RefTable.check_in(ref, %Data{data: 1})
 
     item = RefTable.get(table, ref)
     table = RefTable.put(table, %Data{item | data: 2})
@@ -34,7 +34,7 @@ defmodule UlfnetRefTest do
 
   test "update fun" do
     ref = RefTable.make_ref()
-    {table, _} = RefTable.new() |> RefTable.put(ref, %Data{data: 1})
+    {table, _} = RefTable.new() |> RefTable.check_in(ref, %Data{data: 1})
 
     table = RefTable.update(table, ref, fn item = %Data{data: data} -> %Data{item | data: data + 1} end)
 

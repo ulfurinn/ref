@@ -15,14 +15,10 @@ defmodule Ulfnet.Ref.Table do
   end
 
   def check_in(table = %__MODULE__{}, item = %{@tag => nil}) do
-    ref = make_ref()
-    put(table, ref, item)
+    check_in(table, make_ref(), item)
   end
-
-  def put(table = %__MODULE__{refs: refs}, {@tag, ref}, item = %{@tag => nil}) when is_reference(ref) do
-    if Map.get(refs, ref), do: raise ArgumentError, "reference already in use"
-
-    item = %{item | @tag => {@tag, ref}}
+  def check_in(table = %__MODULE__{}, ref, item = %{@tag => nil}) do
+    item = Map.put(item, @tag, ref)
     table = put(table, item)
     {table, item}
   end
