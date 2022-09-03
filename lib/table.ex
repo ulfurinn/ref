@@ -1,177 +1,209 @@
 defmodule Ulfnet.Ref.Table do
-  import Kernel, except: [make_ref: 0]
-
-  defstruct [
-    refs: %{},
-    outlinks: %{},
-    inlinks: %{},
-    roots: %{},
-  ]
+  @moduledoc false
 
   @tag Ulfnet.Ref
 
-  @type ref() :: {Ulfnet.Ref, reference()}
-
-  defguard is_cell_ref(ref) when is_tuple(ref) and tuple_size(ref) == 2 and elem(ref, 0) == @tag and is_reference(elem(ref, 1))
-  defguard is_cell(item) when is_map(item) and is_cell_ref(:erlang.map_get(Ulfnet.Ref, item))
-
   def new() do
-    %__MODULE__{}
+    :ets.new(__MODULE__, [:set, :public])
   end
 
-  def check_in(table = %__MODULE__{}, item = %{@tag => nil}) do
-    check_in(table, make_ref(), item)
-  end
-  def check_in(table = %__MODULE__{}, ref, item = %{@tag => nil}) do
-    item = Map.put(item, @tag, ref)
-    table = put(table, item)
-    {table, item}
+  def put(table, item = %{@tag => {@tag, table, ref}}) when is_reference(table) and is_reference(ref) do
+    :ets.insert(table, {ref, item})
+    update_item_links(table, item)
   end
 
-  def put(table = %__MODULE__{refs: refs}, new = %{@tag => {@tag, ref}}) when is_reference(ref) do
-    %__MODULE__{table | refs: Map.put(refs, ref, new)}
-    |> update_item_links(new)
+  def root(table, %{@tag => {@tag, table, ref}}) when is_reference(table) and is_reference(ref) do
+    ets_update(table, :roots, MapSet.new([ref]), &MapSet.put(&1, ref))
   end
 
-  def root(table = %__MODULE__{roots: roots}, %{@tag => {@tag, ref}}) when is_reference(ref) do
-    %__MODULE__{table | roots: Map.put(roots, ref, true)}
-  end
-  def unroot(table = %__MODULE__{roots: roots}, %{@tag => {@tag, ref}}) when is_reference(ref) do
-    %__MODULE__{table | roots: Map.delete(roots, ref)}
+  def unroot(table, %{@tag => {@tag, table, ref}}) when is_reference(table) and is_reference(ref) do
+    # TODO: trigger gc if the unrooted item was without inlinks?
+    ets_update(table, :roots, MapSet.new(), &MapSet.delete(&1, ref))
   end
 
-  def get(table = %__MODULE__{}, r = {@tag, ref}) when is_reference(ref) do
+  def get(table, r = {@tag, table, ref}) when is_reference(table) and is_reference(ref) do
     get_int(table, r)
   end
 
-  defp get_int(table = %__MODULE__{}, ref) when is_reference(ref) do
-    Map.get(table.refs, ref)
-  end
-  defp get_int(table = %__MODULE__{}, {@tag, ref}) when is_reference(ref) do
+  defp get_int(table, {@tag, table, ref}) when is_reference(table) and is_reference(ref) do
     get_int(table, ref)
   end
-
-  def update(table = %__MODULE__{refs: refs}, {@tag, ref}, fun) when is_reference(ref) and is_function(fun, 1) do
-    item = fun.(Map.fetch!(refs, ref))
-    %__MODULE__{table | refs: Map.put(refs, ref, item)}
-    |> update_item_links(item)
+  defp get_int(table, ref) when is_reference(table) and is_reference(ref) do
+    ets_fetch(table, ref)
   end
 
-  def delete(table = %__MODULE__{}, {@tag, ref}) when is_reference(ref), do: delete(table, ref)
-  def delete(table = %__MODULE__{refs: refs, inlinks: inlinks}, ref) when is_reference(ref) do
-    current_inlinks = Map.get(inlinks, ref, [])
-    if current_inlinks != [] do
-      raise "cannot delete item #{inspect ref}; inlinks = #{inspect inlinks}"
+  def update(table, {@tag, table, ref}, fun) when is_reference(table) and is_reference(ref) and is_function(fun, 1) do
+    put(table, fun.(get_int(table, ref)))
+  end
+
+  def delete(table, {@tag, table, ref}) when is_reference(table) and is_reference(ref), do: delete(table, ref)
+  def delete(table, ref) when is_reference(table) and is_reference(ref) do
+    current_inlinks = inlinks(table, ref)
+    if MapSet.size(current_inlinks) > 0 do
+      raise "cannot delete item #{inspect ref}; inlinks = #{inspect current_inlinks}"
     end
 
-    outlinks = Map.get(table.outlinks, ref, [])
-
-    %__MODULE__{table | refs: Map.delete(refs, ref)}
-    |> process_outlinks(ref, outlinks, [])
+    ets_delete(table, ref)
+    |> process_outlinks(ref, outlinks(table, ref), MapSet.new())
   end
 
-  defp gc(table = %__MODULE__{roots: roots}, ref) when is_reference(ref) do
-    case roots do
-      %{^ref => _} -> table
-      _ -> delete(table, ref)
+  defp gc(table, ref) when is_reference(table) and is_reference(ref) do
+    if MapSet.member?(roots(table), ref) do
+      table
+    else
+      delete(table, ref)
     end
   end
 
   def ref(%{@tag => ref}), do: ref
 
-  def ref!(%{@tag => ref = {@tag, internal_ref}}) when is_reference(internal_ref), do: ref
+  def ref!(%{@tag => ref = {@tag, _, internal_ref}}) when is_reference(internal_ref), do: ref
   def ref!(_), do: raise "not a referenceable term"
 
-  def internal_ref(%{@tag => {@tag, ref}}), do: ref
+  def internal_ref(%{@tag => {@tag, _, ref}}), do: ref
 
-  def make_ref(), do: {@tag, Kernel.make_ref()}
-  def make_ref(item = %{@tag => nil}), do: Map.put(item, @tag, make_ref())
-  def make_ref(item = %{@tag => _}), do: item
+  def make_ref(table) when is_reference(table), do: {@tag, table, Kernel.make_ref()}
 
-  defp update_item_links(table, item = %{@tag => {@tag, ref}}) do
-    process_outlinks(table, ref, Map.get(table.outlinks, ref, []), scan_outlinks(item))
+  def make_ref(item = %{@tag => nil}, table) when is_reference(table), do: Map.put(item, @tag, make_ref(table))
+  def make_ref(item = %{@tag => _}, table) when is_reference(table), do: item
+
+  defp update_item_links(table, item = %{@tag => {@tag, table, ref}}) do
+    process_outlinks(table, ref, outlinks(table, ref), scan_outlinks(item))
   end
 
   defp process_outlinks(table, ref, old_outlinks, new_outlinks) do
     table
     |> ensure_refs_in_table(new_outlinks)
-    |> process_added_outlinks(ref, new_outlinks -- old_outlinks)
-    |> process_removed_outlinks(ref, old_outlinks -- new_outlinks)
-    |> set_outlink_element(ref, new_outlinks)
+    |> process_added_outlinks(ref, MapSet.difference(new_outlinks, old_outlinks))
+    |> process_removed_outlinks(ref, MapSet.difference(old_outlinks, new_outlinks))
+    |> store_outlinks(ref, new_outlinks)
   end
 
-  defp ensure_refs_in_table(table = %__MODULE__{refs: refs}, links) do
-    missing_refs = Enum.reject(links, &Map.has_key?(refs, &1))
-    if missing_refs != [], do: raise "referenced cell not in table"
+  defp ensure_refs_in_table(table, refs) do
+    if Enum.any?(refs, fn ref -> ! ets_has_key?(table, ref) end), do: raise "referenced cell not in table"
     table
   end
 
   defp process_added_outlinks(table, ref, outlinks) do
     outlinks |> Enum.reduce(table, fn linked_ref, table ->
-      inlinks = Map.update(table.inlinks, linked_ref, [ref], &[ref | &1])
-      %__MODULE__{table | inlinks: inlinks}
+      item_inlinks = inlinks(table, linked_ref)
+      item_inlinks = MapSet.put(item_inlinks, ref)
+      store_inlinks(table, linked_ref, item_inlinks)
     end)
   end
 
   defp process_removed_outlinks(table, ref, outlinks) do
     outlinks |> Enum.reduce(table, fn linked_ref, table ->
-      item_inlinks = Map.get(table.inlinks, linked_ref, []) -- [ref]
-      set_inlink_element_with_gc(table, linked_ref, item_inlinks)
+      item_inlinks = inlinks(table, linked_ref)
+      item_inlinks = MapSet.delete(item_inlinks, ref)
+      store_inlinks(table, linked_ref, item_inlinks)
+      |> maybe_gc(linked_ref, item_inlinks)
     end)
   end
 
-  defp scan_outlinks(item = %{@tag => {@tag, ref}}), do: scan_outlinks(Map.delete(item, @tag), ref, %{}) |> Map.keys()
+  defp scan_outlinks(item = %{@tag => {@tag, table, ref}}), do: scan_outlinks(Map.delete(item, @tag), table, ref, MapSet.new())
 
   # struct don't implement Enumerable
-  defp scan_outlinks(value = %{__struct__: _}, self_ref, acc), do: scan_outlinks(Map.delete(value, :__struct__), self_ref, acc)
+  defp scan_outlinks(value = %{__struct__: _}, table, self_ref, acc), do: scan_outlinks(Map.delete(value, :__struct__), table, self_ref, acc)
 
   # descend into each value
-  defp scan_outlinks(value = %{}, self_ref, acc) do
+  defp scan_outlinks(value = %{}, table, self_ref, acc) do
     value |> Enum.reduce(acc, fn {_, value}, acc ->
-      Map.merge(acc, scan_outlinks(value, self_ref, acc))
+      scan_outlinks(value, table, self_ref, acc)
     end)
   end
 
   # descend into each element
-  defp scan_outlinks(value, self_ref, acc) when is_list(value) do
+  defp scan_outlinks(value, table, self_ref, acc) when is_list(value) do
     value |> Enum.reduce(acc, fn value, acc ->
-      Map.merge(acc, scan_outlinks(value, self_ref, acc))
+      scan_outlinks(value, table, self_ref, acc)
     end)
   end
 
   # circular ref – do not include
-  defp scan_outlinks({@tag, self_ref}, self_ref, acc), do: acc
+  defp scan_outlinks({@tag, table, self_ref}, table, self_ref, acc), do: acc
 
   # ref to another item
-  defp scan_outlinks({@tag, ref}, _, acc) when is_reference(ref) do
-    Map.put(acc, ref, true)
+  defp scan_outlinks({@tag, table, ref}, table, _, acc) when is_reference(ref) do
+    MapSet.put(acc, ref)
   end
 
   # descend into each element
-  defp scan_outlinks(value, self_ref, acc) when is_tuple(value), do: scan_outlinks(Tuple.to_list(value), self_ref, acc)
+  defp scan_outlinks(value, table, self_ref, acc) when is_tuple(value), do: scan_outlinks(Tuple.to_list(value), table, self_ref, acc)
 
   # anything else
-  defp scan_outlinks(_, _, acc), do: acc
+  defp scan_outlinks(_, _, _, acc), do: acc
 
-  defp set_inlink_element_with_gc(table , ref, []) do
-    table |> set_inlink_element(ref, []) |> gc(ref)
-  end
-  defp set_inlink_element_with_gc(table , ref, list) do
-    table |> set_inlink_element(ref, list)
+  defp maybe_gc(table, ref, links) do
+    if MapSet.size(links) == 0, do: gc(table, ref), else: table
   end
 
-  defp set_inlink_element(table = %__MODULE__{inlinks: inlinks}, ref, []) do
-    %__MODULE__{table | inlinks: Map.delete(inlinks, ref)}
+  defp roots(table), do: ets_fetch(table, :roots, MapSet.new())
+
+  def inlinks(table, ref), do: ets_fetch(table, {:inlinks, ref}, MapSet.new())
+  def outlinks(table, ref), do: ets_fetch(table, {:outlinks, ref}, MapSet.new())
+
+  defp store_inlinks(table, ref, links) when map_size(links) == 0 do
+    :ets.delete(table, {:inlinks, ref})
+    table
   end
-  defp set_inlink_element(table = %__MODULE__{inlinks: inlinks}, ref, list) do
-    %__MODULE__{table | inlinks: Map.put(inlinks, ref, list)}
+  defp store_inlinks(table, ref, links) do
+    :ets.insert(table, {{:inlinks, ref}, links})
+    table
   end
 
-  defp set_outlink_element(table = %__MODULE__{outlinks: outlinks}, ref, []) do
-    %__MODULE__{table | outlinks: Map.delete(outlinks, ref)}
+  defp store_outlinks(table, ref, links) when map_size(links) == 0 do
+    :ets.delete(table, {:outlinks, ref})
+    table
   end
-  defp set_outlink_element(table = %__MODULE__{outlinks: outlinks}, ref, list) do
-    %__MODULE__{table | outlinks: Map.put(outlinks, ref, list)}
+  defp store_outlinks(table, ref, links) do
+    :ets.insert(table, {{:outlinks, ref}, links})
+    table
+  end
+
+  defp ets_fetch(table, key) do
+    [{^key, value}] = :ets.lookup(table, key)
+    value
+  end
+
+  defp ets_fetch(table, key, default) do
+    case :ets.lookup(table, key) do
+      [{^key, value}] -> value
+      _ -> if is_function(default), do: default.(), else: default
+    end
+  end
+
+  def ets_has_key?(table, key) do
+    :ets.member(table, key)
+  end
+
+  defp ets_update(table, key, fun) do
+    :ets.insert(table, {key, fun.(ets_fetch(table, key))})
+    table
+  end
+
+  defp ets_update(table, key, default, fun) do
+    case :ets.lookup(table, key) do
+      [{^key, value}] ->
+        :ets.insert(table, {key, fun.(value)})
+      _ ->
+        :ets.insert(table, {key, default})
+    end
+    table
+  end
+
+  defp ets_delete(table, key) do
+    :ets.delete(table, key)
+    table
+  end
+
+  def cells(table) do
+    :ets.foldl(fn element, list ->
+      case element do
+        {ref, item} when is_reference(ref) -> [item | list]
+        _ -> list
+      end
+    end, [], table)
   end
 end
 

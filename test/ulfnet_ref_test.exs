@@ -1,184 +1,163 @@
 defmodule UlfnetRefTest do
   use ExUnit.Case
-  alias Ulfnet.Ref.Table, as: RefTable
-  doctest RefTable
+  alias Ulfnet.Ref
+  alias Ulfnet.Ref.Table
+  doctest Ulfnet.Ref.Table
 
   defmodule Data do
     defstruct [Ulfnet.Ref, :data]
   end
 
-  test "put generated" do
-    table = RefTable.new()
-    {table, item} = RefTable.check_in(table, %Data{data: 1})
-
-    ref = RefTable.ref(item)
-    assert item == RefTable.get(table, ref)
+  setup _ do
+    {:ok, %{table: Ref.new()}}
   end
 
-  test "put external" do
-    ref = RefTable.make_ref()
-    {table, _} = RefTable.new() |> RefTable.check_in(ref, %Data{data: 1})
+  test "put", %{table: table} do
+    item = %Data{data: 1} |> Ref.make_ref(table)
+    Ref.put(table, item)
 
-    assert 1 == RefTable.get(table, ref).data
+    assert 1 == Ref.get(table, Ref.ref(item)).data
   end
 
-  test "update" do
-    ref = RefTable.make_ref()
-    {table, _} = RefTable.new() |> RefTable.check_in(ref, %Data{data: 1})
+  test "put twice", %{table: table} do
+    item = %Data{data: 1} |> Ref.make_ref(table)
+    Ref.put(table, item)
+    ref = Ref.ref(item)
 
-    item = RefTable.get(table, ref)
-    table = RefTable.put(table, %Data{item | data: 2})
+    item = Ref.get(table, ref)
+    Ref.put(table, %Data{item | data: 2})
 
-    assert 2 == RefTable.get(table, ref).data
+    assert 2 == Ref.get(table, ref).data
   end
 
-  test "update fun" do
-    ref = RefTable.make_ref()
-    {table, _} = RefTable.new() |> RefTable.check_in(ref, %Data{data: 1})
+  test "update fun", %{table: table} do
+    item = %Data{data: 1} |> Ref.make_ref(table)
+    Ref.put(table, item)
+    ref = Ref.ref(item)
 
-    table = RefTable.update(table, ref, fn item = %Data{data: data} -> %Data{item | data: data + 1} end)
+    Ref.update(table, ref, fn item = %Data{data: data} -> %Data{item | data: data + 1} end)
 
-    assert 2 == RefTable.get(table, ref).data
+    assert 2 == Ref.get(table, ref).data
   end
 
-  test "link tracking" do
-    item1 = RefTable.make_ref(%Data{})
-    item2 = RefTable.make_ref(%Data{data: RefTable.ref(item1)})
+  test "link tracking", %{table: table} do
+    item1 = %Data{} |> Ref.make_ref(table)
+    item2 = %Data{data: Ref.ref(item1)} |> Ref.make_ref(table)
 
-    table = RefTable.new()
-      |> RefTable.put(item1)
-      |> RefTable.put(item2)
+    table
+      |> Ref.put(item1)
+      |> Ref.put(item2)
 
-    assert item1 == RefTable.get(table, RefTable.ref(item1))
-    assert item2 == RefTable.get(table, RefTable.ref(item2))
+    assert item1 == Ref.get(table, Ref.ref(item1))
+    assert item2 == Ref.get(table, Ref.ref(item2))
 
-    assert 2 == map_size(table.refs)
-    assert %{RefTable.internal_ref(item2) => [RefTable.internal_ref(item1)]} == table.outlinks
-    assert %{RefTable.internal_ref(item1) => [RefTable.internal_ref(item2)]} == table.inlinks
+    assert 2 == length(Table.cells(table))
+    assert MapSet.new([Table.internal_ref(item1)]) == Table.outlinks(table, Table.internal_ref(item2))
+    assert MapSet.new([Table.internal_ref(item2)]) == Table.inlinks(table, Table.internal_ref(item1))
 
-    table = table |> RefTable.delete(RefTable.ref(item2))
+    table |> Ref.delete(Ref.ref(item2))
 
-    assert %{} == table.refs
-    assert %{} == table.outlinks
-    assert %{} == table.inlinks
+    assert 0 == length(Table.cells(table))
+    assert MapSet.new() == Table.outlinks(table, Table.internal_ref(item2))
+    assert MapSet.new() == Table.inlinks(table, Table.internal_ref(item1))
   end
 
-  test "link tracking, two refs" do
-    item1 = RefTable.make_ref(%Data{})
-    item2 = RefTable.make_ref(%Data{data: RefTable.ref(item1)})
-    item3 = RefTable.make_ref(%Data{data: RefTable.ref(item1)})
+  test "link tracking, two refs", %{table: table} do
+    item1 = %Data{} |> Ref.make_ref(table)
+    item2 = %Data{data: Ref.ref(item1)} |> Ref.make_ref(table)
+    item3 = %Data{data: Ref.ref(item1)} |> Ref.make_ref(table)
 
-    table = RefTable.new()
-      |> RefTable.put(item1)
-      |> RefTable.put(item2)
-      |> RefTable.put(item3)
+    table
+      |> Ref.put(item1)
+      |> Ref.put(item2)
+      |> Ref.put(item3)
 
-    assert item1 == RefTable.get(table, RefTable.ref(item1))
-    assert item2 == RefTable.get(table, RefTable.ref(item2))
-    assert item3 == RefTable.get(table, RefTable.ref(item3))
+    assert item1 == Ref.get(table, Ref.ref(item1))
+    assert item2 == Ref.get(table, Ref.ref(item2))
+    assert item3 == Ref.get(table, Ref.ref(item3))
 
-    assert 3 == map_size(table.refs)
-    assert %{
-      RefTable.internal_ref(item2) => [RefTable.internal_ref(item1)],
-      RefTable.internal_ref(item3) => [RefTable.internal_ref(item1)],
-    } == table.outlinks
-    assert %{RefTable.internal_ref(item1) => [
-      RefTable.internal_ref(item3),
-      RefTable.internal_ref(item2),
-    ]} == table.inlinks
+    assert 3 == length(Table.cells(table))
+    assert MapSet.new([Table.internal_ref(item1)]) == Table.outlinks(table, Table.internal_ref(item2))
+    assert MapSet.new([Table.internal_ref(item1)]) == Table.outlinks(table, Table.internal_ref(item3))
+    assert MapSet.new([Table.internal_ref(item2), Table.internal_ref(item3)]) == Table.inlinks(table, Table.internal_ref(item1))
 
-    table = table |> RefTable.delete(RefTable.ref(item3))
+    table |> Ref.delete(Ref.ref(item3))
 
-    assert 2 == map_size(table.refs)
-    assert %{RefTable.internal_ref(item2) => [RefTable.internal_ref(item1)]} == table.outlinks
-    assert %{RefTable.internal_ref(item1) => [RefTable.internal_ref(item2)]} == table.inlinks
+    assert 2 == length(Table.cells(table))
+    assert MapSet.new([Table.internal_ref(item1)]) == Table.outlinks(table, Table.internal_ref(item2))
+    assert MapSet.new([Table.internal_ref(item2)]) == Table.inlinks(table, Table.internal_ref(item1))
 
-    table = table |> RefTable.delete(RefTable.ref(item2))
+    table |> Ref.delete(Ref.ref(item2))
 
-    assert %{} == table.refs
-    assert %{} == table.outlinks
-    assert %{} == table.inlinks
+    assert 0 == length(Table.cells(table))
+    assert MapSet.new() == Table.outlinks(table, Table.internal_ref(item2))
+    assert MapSet.new() == Table.inlinks(table, Table.internal_ref(item1))
   end
 
-  test "link tracking, longer chain" do
-    item1 = RefTable.make_ref(%Data{})
-    item2 = RefTable.make_ref(%Data{data: RefTable.ref(item1)})
-    item3 = RefTable.make_ref(%Data{data: RefTable.ref(item2)})
+  test "link tracking, longer chain", %{table: table} do
+    item1 = %Data{} |> Ref.make_ref(table)
+    item2 = %Data{data: Ref.ref(item1)} |> Ref.make_ref(table)
+    item3 = %Data{data: Ref.ref(item2)} |> Ref.make_ref(table)
 
-    table = RefTable.new()
-      |> RefTable.put(item1)
-      |> RefTable.put(item2)
-      |> RefTable.put(item3)
+    table
+      |> Ref.put(item1)
+      |> Ref.put(item2)
+      |> Ref.put(item3)
 
-    assert item1 == RefTable.get(table, RefTable.ref(item1))
-    assert item2 == RefTable.get(table, RefTable.ref(item2))
-    assert item3 == RefTable.get(table, RefTable.ref(item3))
+    assert item1 == Ref.get(table, Ref.ref(item1))
+    assert item2 == Ref.get(table, Ref.ref(item2))
+    assert item3 == Ref.get(table, Ref.ref(item3))
 
-    assert 3 == map_size(table.refs)
-    assert %{
-      RefTable.internal_ref(item2) => [RefTable.internal_ref(item1)],
-      RefTable.internal_ref(item3) => [RefTable.internal_ref(item2)],
-    } == table.outlinks
-    assert %{
-      RefTable.internal_ref(item1) => [RefTable.internal_ref(item2)],
-      RefTable.internal_ref(item2) => [RefTable.internal_ref(item3)],
-    } == table.inlinks
+    assert 3 == length(Table.cells(table))
+    assert MapSet.new([Table.internal_ref(item1)]) == Table.outlinks(table, Table.internal_ref(item2))
+    assert MapSet.new([Table.internal_ref(item2)]) == Table.outlinks(table, Table.internal_ref(item3))
+    assert MapSet.new([Table.internal_ref(item2)]) == Table.inlinks(table, Table.internal_ref(item1))
+    assert MapSet.new([Table.internal_ref(item3)]) == Table.inlinks(table, Table.internal_ref(item2))
 
-    table = table |> RefTable.delete(RefTable.ref(item3))
+    table |> Ref.delete(Ref.ref(item3))
 
-    assert %{} == table.refs
-    assert %{} == table.outlinks
-    assert %{} == table.inlinks
+    assert 0 == length(Table.cells(table))
+    assert MapSet.new() == Table.outlinks(table, Table.internal_ref(item2))
+    assert MapSet.new() == Table.inlinks(table, Table.internal_ref(item1))
   end
 
-  test "link tracking, root" do
-    item1 = RefTable.make_ref(%Data{})
-    item2 = RefTable.make_ref(%Data{data: RefTable.ref(item1)})
-    item3 = RefTable.make_ref(%Data{data: RefTable.ref(item2)})
+  test "link tracking, root", %{table: table} do
+    item1 = %Data{} |> Ref.make_ref(table)
+    item2 = %Data{data: Ref.ref(item1)} |> Ref.make_ref(table)
+    item3 = %Data{data: Ref.ref(item2)} |> Ref.make_ref(table)
 
-    table = RefTable.new()
-      |> RefTable.put(item1)
-      |> RefTable.put(item2)
-      |> RefTable.put(item3)
-      |> RefTable.root(item1)
+    table
+      |> Ref.put(item1)
+      |> Ref.put(item2)
+      |> Ref.put(item3)
+      |> Ref.root(item1)
 
-    assert item1 == RefTable.get(table, RefTable.ref(item1))
-    assert item2 == RefTable.get(table, RefTable.ref(item2))
-    assert item3 == RefTable.get(table, RefTable.ref(item3))
+    table |> Ref.delete(Ref.ref(item3))
 
-    assert 3 == map_size(table.refs)
-    assert %{
-      RefTable.internal_ref(item2) => [RefTable.internal_ref(item1)],
-      RefTable.internal_ref(item3) => [RefTable.internal_ref(item2)],
-    } == table.outlinks
-    assert %{
-      RefTable.internal_ref(item1) => [RefTable.internal_ref(item2)],
-      RefTable.internal_ref(item2) => [RefTable.internal_ref(item3)],
-    } == table.inlinks
-
-    table = table |> RefTable.delete(RefTable.ref(item3))
-
-    assert %{RefTable.internal_ref(item1) => item1} == table.refs
-    assert %{} == table.outlinks
-    assert %{} == table.inlinks
+    assert [item1] == Table.cells(table)
+    assert MapSet.new() == Table.outlinks(table, Table.internal_ref(item2))
+    assert MapSet.new() == Table.inlinks(table, Table.internal_ref(item1))
   end
 
-  test "enforce checked in references" do
-    item1 = RefTable.make_ref(%Data{})
-    item2 = RefTable.make_ref(%Data{data: RefTable.ref(item1)})
-
-    table = RefTable.new()
+  test "enforce checked in references", %{table: table} do
+    item1 = %Data{} |> Ref.make_ref(table)
+    item2 = %Data{data: Ref.ref(item1)} |> Ref.make_ref(table)
 
     assert_raise RuntimeError, fn ->
-      RefTable.put(table, item2)
+      Ref.put(table, item2)
     end
   end
 
-  test "guard" do
-    ref = RefTable.make_ref()
-    assert RefTable.is_cell_ref(ref)
+  test "guard", %{table: table} do
+    require Ulfnet.Ref
+    ref = Ref.make_ref(table)
+    assert Ref.is_cell_ref(ref)
 
-    item = %Data{} |> RefTable.make_ref()
-    assert RefTable.is_cell(item)
+    item = Ref.make_ref(%Data{}, table)
+    assert Ref.is_cell(item)
+  end
+
+  def dump(table) do
+    :ets.foldl(&IO.inspect/1, nil, table)
   end
 end
