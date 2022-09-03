@@ -42,7 +42,7 @@ defmodule Ulfnet.Ref.Table do
   def delete(table, ref) when is_reference(table) and is_reference(ref) do
     current_inlinks = inlinks(table, ref)
     if MapSet.size(current_inlinks) > 0 do
-      raise "cannot delete item #{inspect ref}; inlinks = #{inspect current_inlinks}"
+      raise Ulfnet.Ref.CannotDeleteReferenced
     end
 
     ets_delete(table, ref)
@@ -60,7 +60,7 @@ defmodule Ulfnet.Ref.Table do
   def ref(%{@tag => ref}), do: ref
 
   def ref!(%{@tag => ref = {@tag, _, internal_ref}}) when is_reference(internal_ref), do: ref
-  def ref!(_), do: raise "not a referenceable term"
+  def ref!(_), do: raise Ulfnet.Ref.NotReferenceable
 
   def internal_ref(%{@tag => {@tag, _, ref}}), do: ref
 
@@ -82,7 +82,7 @@ defmodule Ulfnet.Ref.Table do
   end
 
   defp ensure_refs_in_table(table, refs) do
-    if Enum.any?(refs, fn ref -> ! ets_has_key?(table, ref) end), do: raise "referenced cell not in table"
+    if Enum.any?(refs, fn ref -> ! ets_has_key?(table, ref) end), do: raise Ulfnet.Ref.ReferencedCellNotInTable
     table
   end
 

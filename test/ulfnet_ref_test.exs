@@ -139,8 +139,8 @@ defmodule UlfnetRefTest do
     item1 = %Data{} |> Ref.make_ref(table)
     item2 = %Data{data: Ref.ref(item1)} |> Ref.make_ref(table)
 
-    assert_raise RuntimeError, fn ->
-      Ref.put(table, item2)
+    assert_raise Ulfnet.Ref.ReferencedCellNotInTable, fn ->
+      Ref.put(item2)
     end
   end
 
