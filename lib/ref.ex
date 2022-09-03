@@ -23,5 +23,9 @@ defmodule Ulfnet.Ref do
   def get(ref = {@tag, table, _}), do: get(table, ref)
   def delete(ref = {@tag, table, _}), do: delete(table, ref)
   def delete(%{@tag => ref = {@tag, table, _}}), do: delete(table, ref)
+  def root(ref = {@tag, table, _}), do: root(table, ref)
+  def root(%{@tag => ref = {@tag, table, _}}), do: root(table, ref)
+  def unroot(ref = {@tag, table, _}), do: unroot(table, ref)
+  def unroot(%{@tag => ref = {@tag, table, _}}), do: unroot(table, ref)
 
 end

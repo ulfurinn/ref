@@ -12,11 +12,13 @@ defmodule Ulfnet.Ref.Table do
     update_item_links(table, item)
   end
 
-  def root(table, %{@tag => {@tag, table, ref}}) when is_reference(table) and is_reference(ref) do
+  def root(table, %{@tag => ref}) when is_reference(table), do: root(table, ref)
+  def root(table, {@tag, table, ref}) when is_reference(table) and is_reference(ref) do
     ets_update(table, :roots, MapSet.new([ref]), &MapSet.put(&1, ref))
   end
 
-  def unroot(table, %{@tag => {@tag, table, ref}}) when is_reference(table) and is_reference(ref) do
+  def root(table, %{@tag => ref}) when is_reference(table), do: root(table, ref)
+  def unroot(table, {@tag, table, ref}) when is_reference(table) and is_reference(ref) do
     # TODO: trigger gc if the unrooted item was without inlinks?
     ets_update(table, :roots, MapSet.new(), &MapSet.delete(&1, ref))
   end
