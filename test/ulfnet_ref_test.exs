@@ -131,6 +131,38 @@ defmodule UlfnetRefTest do
     assert %{} == table.inlinks
   end
 
+  test "link tracking, root" do
+    item1 = RefTable.make_ref(%Data{})
+    item2 = RefTable.make_ref(%Data{data: RefTable.ref(item1)})
+    item3 = RefTable.make_ref(%Data{data: RefTable.ref(item2)})
+
+    table = RefTable.new()
+      |> RefTable.put(item1)
+      |> RefTable.put(item2)
+      |> RefTable.put(item3)
+      |> RefTable.root(item1)
+
+    assert item1 == RefTable.get(table, RefTable.ref(item1))
+    assert item2 == RefTable.get(table, RefTable.ref(item2))
+    assert item3 == RefTable.get(table, RefTable.ref(item3))
+
+    assert 3 == map_size(table.refs)
+    assert %{
+      RefTable.internal_ref(item2) => [RefTable.internal_ref(item1)],
+      RefTable.internal_ref(item3) => [RefTable.internal_ref(item2)],
+    } == table.outlinks
+    assert %{
+      RefTable.internal_ref(item1) => [RefTable.internal_ref(item2)],
+      RefTable.internal_ref(item2) => [RefTable.internal_ref(item3)],
+    } == table.inlinks
+
+    table = table |> RefTable.delete(RefTable.ref(item3))
+
+    assert %{RefTable.internal_ref(item1) => item1} == table.refs
+    assert %{} == table.outlinks
+    assert %{} == table.inlinks
+  end
+
   test "enforce checked in references" do
     item1 = RefTable.make_ref(%Data{})
     item2 = RefTable.make_ref(%Data{data: RefTable.ref(item1)})

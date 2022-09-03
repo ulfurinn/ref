@@ -31,6 +31,9 @@ defmodule Ulfnet.Ref.Table do
   def root(table = %__MODULE__{roots: roots}, %{@tag => {@tag, ref}}) when is_reference(ref) do
     %__MODULE__{table | roots: Map.put(roots, ref, true)}
   end
+  def unroot(table = %__MODULE__{roots: roots}, %{@tag => {@tag, ref}}) when is_reference(ref) do
+    %__MODULE__{table | roots: Map.delete(roots, ref)}
+  end
 
   def get(table = %__MODULE__{}, r = {@tag, ref}) when is_reference(ref) do
     get_int(table, r)
@@ -62,12 +65,23 @@ defmodule Ulfnet.Ref.Table do
     |> process_outlinks(ref, outlinks, [])
   end
 
+  defp gc(table = %__MODULE__{roots: roots}, ref) when is_reference(ref) do
+    case roots do
+      %{^ref => _} -> table
+      _ -> delete(table, ref)
+    end
+  end
+
   def ref(%{@tag => ref}), do: ref
+
+  def ref!(%{@tag => ref = {@tag, internal_ref}}) when is_reference(internal_ref), do: ref
+  def ref!(_), do: raise "not a referenceable term"
 
   def internal_ref(%{@tag => {@tag, ref}}), do: ref
 
   def make_ref(), do: {@tag, Kernel.make_ref()}
   def make_ref(item = %{@tag => nil}), do: Map.put(item, @tag, make_ref())
+  def make_ref(item = %{@tag => _}), do: item
 
   defp update_item_links(table, item = %{@tag => {@tag, ref}}) do
     process_outlinks(table, ref, Map.get(table.outlinks, ref, []), scan_outlinks(item))
@@ -135,7 +149,7 @@ defmodule Ulfnet.Ref.Table do
   defp scan_outlinks(_, _, acc), do: acc
 
   defp set_inlink_element_with_gc(table , ref, []) do
-    table |> set_inlink_element(ref, []) |> delete(ref)
+    table |> set_inlink_element(ref, []) |> gc(ref)
   end
   defp set_inlink_element_with_gc(table , ref, list) do
     table |> set_inlink_element(ref, list)
