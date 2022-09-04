@@ -10,6 +10,7 @@ defmodule Ulfnet.Ref.Table do
   def put(table, item = %{@tag => {@tag, table, ref}}) when is_reference(table) and is_reference(ref) do
     :ets.insert(table, {ref, item})
     update_item_links(table, item)
+    item
   end
 
   def root(table, %{@tag => ref}) when is_reference(table), do: root(table, ref)
@@ -47,14 +48,15 @@ defmodule Ulfnet.Ref.Table do
 
     ets_delete(table, ref)
     |> process_outlinks(ref, outlinks(table, ref), MapSet.new())
+
+    nil
   end
 
   defp gc(table, ref) when is_reference(table) and is_reference(ref) do
-    if MapSet.member?(roots(table), ref) do
-      table
-    else
+    unless MapSet.member?(roots(table), ref) do
       delete(table, ref)
     end
+    table
   end
 
   def ref(%{@tag => ref}), do: ref
