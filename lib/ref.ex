@@ -4,13 +4,14 @@ defmodule Ulfnet.Ref do
   @tag __MODULE__
   @type ref() :: {Ulfnet.Ref, reference(), reference()}
 
-  defguard is_cell_ref(ref) when is_tuple(ref) and tuple_size(ref) == 3 and elem(ref, 0) == @tag and is_reference(elem(ref, 1)) and is_reference(elem(ref, 2))
+  defguard is_cell_ref(ref) when is_tuple(ref) and tuple_size(ref) == 3 and elem(ref, 0) == @tag and is_reference(elem(ref, 2))
   defguard is_cell(item) when is_map(item) and is_cell_ref(:erlang.map_get(Ulfnet.Ref, item))
 
   defdelegate new(), to: Table
   defdelegate ref(item), to: Table
   defdelegate make_ref(table), to: Table
   defdelegate make_ref(item, table), to: Table
+  defdelegate check_in(item, table), to: Table
   defdelegate put(table, item), to: Table
   defdelegate update(table, ref, fun), to: Table
   defdelegate get(table, item), to: Table

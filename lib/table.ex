@@ -7,40 +7,44 @@ defmodule Ulfnet.Ref.Table do
     :ets.new(__MODULE__, [:set, :public])
   end
 
-  def put(table, item = %{@tag => {@tag, table, ref}}) when is_reference(table) and is_reference(ref) do
+  def put(table, item = %{@tag => {@tag, table, ref}}) when is_reference(ref) do
     :ets.insert(table, {ref, item})
     update_item_links(table, item)
     item
   end
 
-  def root(table, %{@tag => ref}) when is_reference(table), do: root(table, ref)
-  def root(table, {@tag, table, ref}) when is_reference(table) and is_reference(ref) do
+  def check_in(item, table) do
+    put(table, make_ref(item, table))
+  end
+
+  def root(table, %{@tag => ref}), do: root(table, ref)
+  def root(table, {@tag, table, ref}) when is_reference(ref) do
     ets_update(table, :roots, MapSet.new([ref]), &MapSet.put(&1, ref))
   end
 
-  def root(table, %{@tag => ref}) when is_reference(table), do: root(table, ref)
-  def unroot(table, {@tag, table, ref}) when is_reference(table) and is_reference(ref) do
+  def unroot(table, %{@tag => ref}), do: root(table, ref)
+  def unroot(table, {@tag, table, ref}) when is_reference(ref) do
     # TODO: trigger gc if the unrooted item was without inlinks?
     ets_update(table, :roots, MapSet.new(), &MapSet.delete(&1, ref))
   end
 
-  def get(table, r = {@tag, table, ref}) when is_reference(table) and is_reference(ref) do
+  def get(table, r = {@tag, table, ref}) when is_reference(ref) do
     get_int(table, r)
   end
 
-  defp get_int(table, {@tag, table, ref}) when is_reference(table) and is_reference(ref) do
+  defp get_int(table, {@tag, table, ref}) when is_reference(ref) do
     get_int(table, ref)
   end
-  defp get_int(table, ref) when is_reference(table) and is_reference(ref) do
+  defp get_int(table, ref) when is_reference(ref) do
     ets_fetch(table, ref)
   end
 
-  def update(table, {@tag, table, ref}, fun) when is_reference(table) and is_reference(ref) and is_function(fun, 1) do
+  def update(table, {@tag, table, ref}, fun) when is_reference(ref) and is_function(fun, 1) do
     put(table, fun.(get_int(table, ref)))
   end
 
-  def delete(table, {@tag, table, ref}) when is_reference(table) and is_reference(ref), do: delete(table, ref)
-  def delete(table, ref) when is_reference(table) and is_reference(ref) do
+  def delete(table, {@tag, table, ref}) when is_reference(ref), do: delete(table, ref)
+  def delete(table, ref) when is_reference(ref) do
     current_inlinks = inlinks(table, ref)
     if MapSet.size(current_inlinks) > 0 do
       raise Ulfnet.Ref.CannotDeleteReferenced
@@ -52,7 +56,7 @@ defmodule Ulfnet.Ref.Table do
     nil
   end
 
-  defp gc(table, ref) when is_reference(table) and is_reference(ref) do
+  defp gc(table, ref) when is_reference(ref) do
     unless MapSet.member?(roots(table), ref) do
       delete(table, ref)
     end
@@ -66,10 +70,10 @@ defmodule Ulfnet.Ref.Table do
 
   def internal_ref(%{@tag => {@tag, _, ref}}), do: ref
 
-  def make_ref(table) when is_reference(table), do: {@tag, table, Kernel.make_ref()}
+  def make_ref(table), do: {@tag, table, Kernel.make_ref()}
 
-  def make_ref(item = %{@tag => nil}, table) when is_reference(table), do: Map.put(item, @tag, make_ref(table))
-  def make_ref(item = %{@tag => _}, table) when is_reference(table), do: item
+  def make_ref(item = %{@tag => nil}, table), do: Map.put(item, @tag, make_ref(table))
+  def make_ref(item = %{@tag => _}, _), do: item
 
   defp update_item_links(table, item = %{@tag => {@tag, table, ref}}) do
     process_outlinks(table, ref, outlinks(table, ref), scan_outlinks(item))
@@ -142,26 +146,28 @@ defmodule Ulfnet.Ref.Table do
     if MapSet.size(links) == 0, do: gc(table, ref), else: table
   end
 
-  defp roots(table), do: ets_fetch(table, :roots, MapSet.new())
+  defp roots(table), do: ets_fetch(table, :roots, fn -> MapSet.new() end)
 
-  def inlinks(table, ref), do: ets_fetch(table, {:inlinks, ref}, MapSet.new())
-  def outlinks(table, ref), do: ets_fetch(table, {:outlinks, ref}, MapSet.new())
+  def inlinks(table, ref), do: ets_fetch(table, {:inlinks, ref}, fn -> MapSet.new() end)
+  def outlinks(table, ref), do: ets_fetch(table, {:outlinks, ref}, fn -> MapSet.new() end)
 
-  defp store_inlinks(table, ref, links) when map_size(links) == 0 do
-    :ets.delete(table, {:inlinks, ref})
-    table
-  end
   defp store_inlinks(table, ref, links) do
-    :ets.insert(table, {{:inlinks, ref}, links})
+    case MapSet.size(links) do
+      0 ->
+        :ets.delete(table, {:inlinks, ref})
+      _ ->
+        :ets.insert(table, {{:inlinks, ref}, links})
+    end
     table
   end
 
-  defp store_outlinks(table, ref, links) when map_size(links) == 0 do
-    :ets.delete(table, {:outlinks, ref})
-    table
-  end
   defp store_outlinks(table, ref, links) do
-    :ets.insert(table, {{:outlinks, ref}, links})
+    case MapSet.size(links) do
+      0 ->
+        :ets.delete(table, {:outlinks, ref})
+      _ ->
+        :ets.insert(table, {{:outlinks, ref}, links})
+    end
     table
   end
 
@@ -170,10 +176,11 @@ defmodule Ulfnet.Ref.Table do
     value
   end
 
+  @spec ets_fetch(:ets.tid(), any(), function()) :: any()
   defp ets_fetch(table, key, default) do
     case :ets.lookup(table, key) do
       [{^key, value}] -> value
-      _ -> if is_function(default), do: default.(), else: default
+      _ -> default.()
     end
   end
 

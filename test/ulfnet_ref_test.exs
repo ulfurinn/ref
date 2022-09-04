@@ -50,13 +50,13 @@ defmodule UlfnetRefTest do
     assert item1 == Ref.get(Ref.ref(item1))
     assert item2 == Ref.get(Ref.ref(item2))
 
-    assert 2 == length(Table.cells(table))
+    assert [_, _] = Table.cells(table)
     assert MapSet.new([Table.internal_ref(item1)]) == Table.outlinks(table, Table.internal_ref(item2))
     assert MapSet.new([Table.internal_ref(item2)]) == Table.inlinks(table, Table.internal_ref(item1))
 
     Ref.delete(Ref.ref(item2))
 
-    assert 0 == length(Table.cells(table))
+    assert [] = Table.cells(table)
     assert MapSet.new() == Table.outlinks(table, Table.internal_ref(item2))
     assert MapSet.new() == Table.inlinks(table, Table.internal_ref(item1))
   end
@@ -74,20 +74,20 @@ defmodule UlfnetRefTest do
     assert item2 == Ref.get(Ref.ref(item2))
     assert item3 == Ref.get(Ref.ref(item3))
 
-    assert 3 == length(Table.cells(table))
+    assert [_, _, _] = Table.cells(table)
     assert MapSet.new([Table.internal_ref(item1)]) == Table.outlinks(table, Table.internal_ref(item2))
     assert MapSet.new([Table.internal_ref(item1)]) == Table.outlinks(table, Table.internal_ref(item3))
     assert MapSet.new([Table.internal_ref(item2), Table.internal_ref(item3)]) == Table.inlinks(table, Table.internal_ref(item1))
 
     Ref.delete(Ref.ref(item3))
 
-    assert 2 == length(Table.cells(table))
+    assert [_, _] = Table.cells(table)
     assert MapSet.new([Table.internal_ref(item1)]) == Table.outlinks(table, Table.internal_ref(item2))
     assert MapSet.new([Table.internal_ref(item2)]) == Table.inlinks(table, Table.internal_ref(item1))
 
     Ref.delete(Ref.ref(item2))
 
-    assert 0 == length(Table.cells(table))
+    assert [] = Table.cells(table)
     assert MapSet.new() == Table.outlinks(table, Table.internal_ref(item2))
     assert MapSet.new() == Table.inlinks(table, Table.internal_ref(item1))
   end
@@ -105,7 +105,7 @@ defmodule UlfnetRefTest do
     assert item2 == Ref.get(Ref.ref(item2))
     assert item3 == Ref.get(Ref.ref(item3))
 
-    assert 3 == length(Table.cells(table))
+    assert [_, _, _] = Table.cells(table)
     assert MapSet.new([Table.internal_ref(item1)]) == Table.outlinks(table, Table.internal_ref(item2))
     assert MapSet.new([Table.internal_ref(item2)]) == Table.outlinks(table, Table.internal_ref(item3))
     assert MapSet.new([Table.internal_ref(item2)]) == Table.inlinks(table, Table.internal_ref(item1))
@@ -113,7 +113,7 @@ defmodule UlfnetRefTest do
 
     Ref.delete(Ref.ref(item3))
 
-    assert 0 == length(Table.cells(table))
+    assert [] = Table.cells(table)
     assert MapSet.new() == Table.outlinks(table, Table.internal_ref(item2))
     assert MapSet.new() == Table.inlinks(table, Table.internal_ref(item1))
   end
@@ -154,6 +154,6 @@ defmodule UlfnetRefTest do
   end
 
   def dump(table) do
-    :ets.foldl(&IO.inspect/1, nil, table)
+    :ets.foldl(&IO.puts(inspect &1), nil, table)
   end
 end
